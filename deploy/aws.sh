@@ -1877,6 +1877,27 @@ set_github_secrets() {  # the roles' ARNs as the GitHub environments' AWS_ROLE_A
   done
 }
 
+# GitHub's OIDC provider can exist only once in an account (DP2): the pipeline makes it only where its own state already
+# holds it, or the account has none. Each list is read whole before it's searched: with pipefail, "terraform state list
+# | grep -q" fails when grep stops at its first match while terraform is still writing (SIGPIPE), and a provider this
+# pipeline made then looked like the account's own, so Terraform planned to destroy it (November 5, 2026).
+# A root never applied has no state yet: terraform state list then fails with "No state file was found!", which means
+# the root holds nothing, not that its state can't be read (the BMU's checklist, November 14, 2026). Any other failure
+# stops. Called as create="$(oidc_provider_create)" || exit 1, where set -e doesn't apply: each failure dies itself.
+oidc_provider_create() {  # prints true or false; the pipeline's Terraform must be initialised
+  local state providers
+  if ! state="$(tf pipeline state list 2>&1)"; then
+    case "$state" in
+      *"No state file was found"*) state="" ;;
+      *) die "Couldn't read the pipeline's Terraform state (terraform state list) for '$ENV'. Nothing was changed." ;;
+    esac
+  fi
+  if grep -q '^aws_iam_openid_connect_provider\.github' <<<"$state"; then echo true; return 0; fi
+  providers="$(aws_ iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[].Arn' --output text)" ||
+    die "Couldn't list the account's OIDC providers. Nothing was changed."
+  if grep -q 'oidc-provider/token\.actions\.githubusercontent\.com' <<<"$providers"; then echo false; else echo true; fi
+}
+
 pipeline_root() {  # pipeline_root [destroy]
   load_env
   [ "$SETTINGS" = ssm ] ||
@@ -1885,20 +1906,8 @@ pipeline_root() {  # pipeline_root [destroy]
   [ "$ROOT" = shared ] || die "The pipeline is for environments on the shared root: stage 2, QA, production (DP1)."
   check_account; need_terraform; ensure_state_bucket
   tf_init pipeline
-  local create vars subject state providers
-  # GitHub's OIDC provider can exist only once in an account (DP2): made here only where there is none. Each list is
-  # read whole before it's searched: with pipefail, "terraform state list | grep -q" fails when grep stops at its first
-  # match while terraform is still writing (SIGPIPE), and a provider this pipeline made then looked like the account's
-  # own, so Terraform planned to destroy it (November 5, 2026).
-  state="$(tf pipeline state list 2>/dev/null)" ||
-    die "Couldn't read the pipeline's Terraform state (terraform state list) for '$ENV'. Nothing was changed."
-  if grep -q '^aws_iam_openid_connect_provider\.github' <<<"$state"; then create=true
-  else
-    providers="$(aws_ iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[].Arn' --output text)"
-    if grep -q 'oidc-provider/token\.actions\.githubusercontent\.com' <<<"$providers"; then create=false
-    else create=true
-    fi
-  fi
+  local create vars subject
+  create="$(oidc_provider_create)" || exit 1
   # Deleting needs no answer from GitHub: any subject will do.
   if [ "${1:-}" = destroy ]; then subject="repo:$PIPELINE_REPO"; else subject="$(github_subject)" || exit 1; fi
   vars=(-var "account_id=$ACCOUNT_ID" -var "region=$AWS_REGION" -var "environment=$ENV" -var "env_name=$SERENA_ENV_NAME"
