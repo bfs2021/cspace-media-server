@@ -153,6 +153,67 @@ def test_aws_sh_never_pipes_a_command_into_grep_q() -> None:
     assert offenders == []
 
 
+GITHUB_PROVIDER = "arn:aws:iam::111111111111:oidc-provider/token.actions.githubusercontent.com"
+# A fake terraform state list and aws iam list-open-id-connect-providers for oidc_provider_create. STATE: none, as for
+# a root never applied; broken, as for a state that can't be read; otherwise the state's resources. PROVIDERS: the
+# account's OIDC providers, or "fail".
+OIDC_FAKES = """set -euo pipefail
+ENV=ucb-prod
+die() { echo "$*" >&2; exit 1; }
+tf() {
+  case "$STATE" in
+    none) echo "No state file was found!" >&2; return 1 ;;
+    broken) echo "Error: Failed to load state: AccessDenied" >&2; return 1 ;;
+    *) echo "$STATE" ;;
+  esac
+}
+aws_() { echo called > "$CALLED"; [ "$PROVIDERS" != fail ] || return 255; echo "$PROVIDERS"; }
+"""
+
+
+def oidc_provider_create(tmp_path: Path, state: str, providers: str = "") -> subprocess.CompletedProcess[str]:
+    """Runs deploy/aws.sh's oidc_provider_create as pipeline_root does, with a fake terraform and AWS CLI."""
+    function = shell_function((DEPLOY / "aws.sh").read_text(), "oidc_provider_create")
+    script = f'{OIDC_FAKES}{function}\ncreate="$(oidc_provider_create)" || exit 1\necho "create=$create"\n'
+    env = {**os.environ, "STATE": state, "PROVIDERS": providers, "CALLED": str(tmp_path / "aws-called")}
+    # The function is this repository's own deploy/aws.sh, not outside input.
+    return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)  # noqa: S603, S607
+
+
+@pytest.mark.parametrize(("providers", "create"), [("", "true"), (GITHUB_PROVIDER, "false")])
+def test_a_root_never_applied_has_no_state_yet_and_holds_no_provider(
+        tmp_path: Path, providers: str, create: str) -> None:
+    """terraform state list fails with "No state file was found!" before a root's first apply (the BMU's checklist,
+    November 14, 2026): the pipeline's root holds nothing, so it makes the provider only where the account has none."""
+    result = oidc_provider_create(tmp_path, "none", providers)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"create={create}\n"
+
+
+def test_a_provider_the_pipelines_state_holds_stays_its_own(tmp_path: Path) -> None:
+    result = oidc_provider_create(tmp_path, "aws_iam_openid_connect_provider.github[0]\naws_iam_role.plan",
+                                  GITHUB_PROVIDER)
+    assert result.stdout == "create=true\n"
+
+
+def test_a_state_that_cant_be_read_stops_before_anything_is_planned(tmp_path: Path) -> None:
+    result = oidc_provider_create(tmp_path, "broken")
+    assert result.returncode == 1
+    assert result.stderr == ("Couldn't read the pipeline's Terraform state (terraform state list) for 'ucb-prod'. "
+                             "Nothing was changed.\n")
+    assert not (tmp_path / "aws-called").exists()
+    pipeline_root = shell_function((DEPLOY / "aws.sh").read_text(), "pipeline_root")
+    assert 'create="$(oidc_provider_create)" || exit 1' in pipeline_root  # before it plans anything
+
+
+def test_oidc_providers_that_cant_be_listed_stop(tmp_path: Path) -> None:
+    """Called in $(…) || exit 1, where set -e doesn't apply: a failed list would otherwise read as "the account has
+    none", and Terraform would plan a second provider, which IAM refuses."""
+    result = oidc_provider_create(tmp_path, "none", "fail")
+    assert result.returncode == 1
+    assert result.stderr == "Couldn't list the account's OIDC providers. Nothing was changed.\n"
+
+
 def github_environment_check() -> str:
     """The Python that ./serena aws pipeline runs on a GitHub environment's rules (check_github_environments)."""
     aws_sh = (DEPLOY / "aws.sh").read_text()

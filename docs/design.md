@@ -1778,7 +1778,9 @@ their hashed names, with no CDN (D296).
     checks GitHub's API before applying: both GitHub environments exist and take only `main`, and `<env>` has a
     required reviewer (with "prevent self-review" where there is real data, unless the environment's committed
     settings file says `ALLOW_SELF_REVIEW=true`, D308). It makes GitHub's OIDC provider only if
-    its own state already holds it or the account has none. Then it offers to set the environments' `AWS_ROLE_ARN`
+    its own state already holds it or the account has none. Before the root's first apply there is no state, which
+    holds nothing; a state that can't be read, or providers that can't be listed, stop it before it plans anything
+    (fixed November 16, 2026, before a first run in a new account; the BMU's pipeline found it). Then it offers to set the environments' `AWS_ROLE_ARN`
     secrets and `AWS_REGION` variables with `gh`. Once an environment has a pipeline, `./serena aws deploy`, `pause`
     and `resume` from a laptop are break-glass (typing "break glass"), and `status` says the pipeline deploys it.
     The roles' trust takes the start of the tokens' `sub` claim from GitHub's API when `./serena aws pipeline` runs
