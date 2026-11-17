@@ -22,6 +22,9 @@ ON_TEST_STACK = os.environ.get("SERENADE_STACK") == "test"
 # (T47): the test stack's web container. Override them for a stack run without Docker.
 WEB_STOP = os.environ.get("SERENADE_WEB_STOP", "docker compose -p serena-test stop web")
 WEB_START = os.environ.get("SERENADE_WEB_START", "docker compose -p serena-test start web")
+# The test stack's worker container, where the fake ETL and the failed-update tool run, as ./serena etl and
+# ./serena failed-update run them on a tester's stack (test_refresh_pages.py makes its own refreshes with them).
+WORKER = os.environ.get("SERENADE_WORKER", "docker compose -p serena-test exec -T worker")
 # Only the local stack, over plain http: never QA or production.
 for _url in (SERENA_URL, SIM_URL):
     if not _url.startswith(("http://localhost:", "http://127.0.0.1:")):
@@ -96,3 +99,32 @@ def start_serena() -> None:
             raise AssertionError(f"Serena answered {status}")
 
     eventually(healthy, seconds=120)
+
+
+def _in_worker(*module_and_args: str) -> str:
+    """Runs one of the backend's local-only tools (backend/devtools) in the test stack's worker; what it printed."""
+    done = subprocess.run([*shlex.split(WORKER), "python", "-m", *module_and_args],  # noqa: S603 (our own command)
+                          check=True, capture_output=True, text=True, timeout=300)
+    return done.stdout
+
+
+def _rows(rows: int | None) -> list[str]:
+    return [] if rows is None else ["--rows", str(rows)]
+
+
+def fake_etl(museum: str, rows: int | None = None) -> dict[str, Any]:
+    """A daily refresh by the fake ETL through Serena's ETL API, as `./serena etl <museum> [--rows N]`: its summary
+    (refresh_id, state, …), once the worker has checked the ETL list and, on a pass, applied it."""
+    summary: dict[str, Any] = json.loads(_in_worker("devtools.fake_etl", "--museum", museum, "--json", *_rows(rows)))
+    return summary
+
+
+def etl_list(museum: str, rows: int | None = None) -> str:
+    """The ETL list the fake ETL would send, as a file's text, for Manual refresh's upload; Serena isn't called."""
+    return _in_worker("devtools.fake_etl", "--museum", museum, "--file-only", *_rows(rows))
+
+
+def failed_update(museum: str) -> str:
+    """Records a failed ETL list update, as `./serena failed-update <museum>` (checklist section 45): a new refresh,
+    repeating the museum's last updated ETL list, in "ETL list update failed". Returns its ID."""
+    return _in_worker("devtools.failed_update", "--museum", museum).split(":", 1)[0].strip()

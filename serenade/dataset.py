@@ -102,6 +102,18 @@ CINEFILES = "cinefiles"
 # failed manual refresh, T21 adds manual refreshes up to 30. No PAHMA test uses UCJEPS.
 UCJEPS = "ucjeps"
 UCJEPS_FAILED = "ucjeps-failed"
+# The Botanical Garden, a reserved museum with no refresh in the dataset. test_refresh_pages.py's tests (T134 to
+# T148) make its refreshes themselves, in order, with the fake ETL and the failed-update tool (stack.py): Overview
+# before any refresh, a failed check's pill and steps, how far past the delta threshold, an override and the
+# Overridden filter, a failed ETL list update and its retries, and Manual refresh (an older ETL list, Apply with
+# override, a file that isn't an ETL list, an ETL list made from the simulator). No other test uses it.
+BOTGARDEN = "botgarden"
+BOTGARDEN_NAME = "Botanical Garden"  # as the sign-in page and the page titles name it
+
+
+def media_csid(museum: str, row: int) -> str:
+    """The Media CSID of a museum's record, as the fake ETL makes it (PAHMA's are the Records above)."""
+    return str(uuid.uuid5(_NAMESPACE, f"{museum}/media/{row}"))
 
 
 def servable_list(name: str) -> Path:

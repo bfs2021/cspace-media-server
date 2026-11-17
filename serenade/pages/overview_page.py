@@ -15,6 +15,17 @@ class OverviewPage(Page):
     # The audit log's rows arrive after the page opens: wait for one, by its action.
     SIGN_IN_ROW = (By.XPATH, "//*[@id='audit-table']//td[normalize-space()='sign in']")
 
+    # The current refresh, which Serena serves from, and the pending one (mockup version 55).
+    CURRENT_CARD = by_id("current-card")
+    CURRENT_NONE = by_id("current-none")
+    CURRENT_STATE = by_id("current-refresh-state")
+    PARTLY_REPLACED = by_id("partly-replaced")  # a failed update stopped partway
+    PARTLY_REPLACED_DETAIL = by_id("partly-replaced-detail")
+    PENDING_CARD = by_id("pending-card")
+    PENDING_NONE = by_id("pending-none")
+    PENDING_STATE = by_id("pending-refresh-state")
+    PENDING_FIX = by_id("pending-fix")
+
     SIGN_IN_ANOTHER = by_id("sign-in-another")  # in the museum menu
     SIGN_OUT_ALL = by_id("sign-out-all")
     CONFIRM_SIGN_OUT_ALL = by_id("confirm-sign-out-all")
@@ -27,6 +38,10 @@ class OverviewPage(Page):
     def museum_item(title: str) -> Locator:
         return (By.XPATH, "//div[contains(@class, 'v-overlay--active')]//div[contains(@class, 'v-list-item-title') "
                           f"and normalize-space()='{title}']")
+
+    def open_page(self, museum: str) -> None:
+        self.open(museum)
+        self.wait_for(self.PENDING_CARD)
 
     def museums_in_menu(self) -> list[str]:
         """The museums the museum menu lists (it's opened, read and closed again)."""
