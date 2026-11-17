@@ -301,6 +301,7 @@ def test_override_the_delta_threshold(admin: TestClient, etl: TestClient, worker
     alert = admin.get("/admin/v1/museums/pahma/alerts").json()["alerts"][0]
     assert alert["kind"] == "threshold_overridden" and failed["refresh_id"] in alert["message"]
     assert alert["title"] == "An admin overrode the delta threshold"
+    assert "Serena checks the same ETL list again without it" in alert["message"]  # the admin app's words, emailed too
     assert alert["message"].endswith("Reason: Known bulk change in CollectionSpace: PAHMA republished half its images")
 
     # The worker checks the same servable list again without the delta threshold, then updates (no ETL rerun).

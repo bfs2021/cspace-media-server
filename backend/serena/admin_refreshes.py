@@ -374,8 +374,8 @@ def create_router() -> APIRouter:
         then = "on a pass, updates"
         r.alerts.raise_(Alert(session.tenant, r.refreshes.today(), Kind.THRESHOLD_OVERRIDDEN, refresh.refresh_id,
                               f"An admin overrode the delta threshold for {museum.name}'s refresh "
-                              f"{refresh.refresh_id} ({delta}% of the rows change). Serena checks the same servable "
-                              f"list again without it and, {then}. Reason: {given}",
+                              f"{refresh.refresh_id} ({delta}% of the rows change). Serena checks the same ETL list "
+                              f"again without it and, {then}. Reason: {given}",
                               instance=at))  # each override is emailed (D62)
         services(request).audit.record(session.tenant, session.user, Action.THRESHOLD_OVERRIDE, refresh.refresh_id,
                                        {"kind": body.kind, "reason": reason, "delta_percent": delta})

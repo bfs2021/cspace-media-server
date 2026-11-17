@@ -22,8 +22,8 @@
       <section id="manual-card" class="manual-card mb-4" aria-labelledby="manual-card-head">
         <div id="manual-current" class="mb-3">
           <p class="mb-1">
-            <strong>Current refresh:</strong>
-            <template v-if="current">
+            <!-- The space stays on this line: Vue drops white space that holds a line break between two tags. -->
+            <strong>Current refresh:</strong> <template v-if="current">
               <RefreshLink :id="current.refresh_id" /> <RefreshState :state="current.state" :override="current.override" /><v-chip
                 v-if="partly"
                 id="manual-partly"
@@ -65,9 +65,7 @@
           </h2>
           <p class="mb-2">
             At {{ when(applied.refresh.created_at) }}, with {{ applied.with }}. Reason:
-            <template v-if="applied.kind"><strong>{{ OVERRIDE_KINDS[applied.kind] }}</strong>: </template>{{ applied.reason }}<template v-if="applied.kind">
-              (the delta threshold is overridden for it, and the team was emailed)
-            </template>.
+            <template v-if="applied.kind"><strong>{{ OVERRIDE_KINDS[applied.kind] }}</strong>: </template>{{ applied.reason }}{{ applied.kind ? OVERRIDDEN_FOR_IT : '' }}.
           </p>
           <p v-if="applied.replaced" id="manual-replaced" class="mb-2">
             It replaced the pending refresh <RefreshLink :id="applied.replaced" />, which is now Abandoned.
@@ -447,6 +445,8 @@ const route = useRoute()
 const ownMuseum = String(route.params.museum)
 const museum = computed(() => ownMuseum)
 const source = ref<'' | 'etl' | 'upload' | 'simulator'>('')
+// After an applied override's reason, before the sentence's full stop.
+const OVERRIDDEN_FOR_IT = ' (the delta threshold is overridden for it, and the team was emailed)'
 const PICKER_TITLES: Record<string, string> = {
   etl: 'Previous ETL lists',
   upload: 'Upload an ETL list file',

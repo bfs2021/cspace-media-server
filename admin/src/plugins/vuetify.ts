@@ -11,6 +11,7 @@ import {VCard, VCardActions, VCardText, VCardTitle} from 'vuetify/components/VCa
 import {VCheckbox} from 'vuetify/components/VCheckbox'
 import {VChip} from 'vuetify/components/VChip'
 import {VDialog} from 'vuetify/components/VDialog'
+import {VExpansionPanel, VExpansionPanelText, VExpansionPanelTitle, VExpansionPanels} from 'vuetify/components/VExpansionPanel'
 import {VFileInput} from 'vuetify/components/VFileInput'
 import {VForm} from 'vuetify/components/VForm'
 import {VDataTable} from 'vuetify/components/VDataTable'
@@ -37,7 +38,7 @@ import {VTooltip} from 'vuetify/components/VTooltip'
 export default createVuetify({
   components: {
     VAlert, VApp, VAppBar, VAppBarTitle, VBadge, VBtn, VBtnToggle, VCard, VCardActions, VCardText, VCardTitle, VCheckbox, VChip,
-    VContainer, VDataTable, VDialog, VFileInput, VForm, VIcon, VList, VListItem, VListItemTitle, VListSubheader, VMain, VMenu, VNavigationDrawer,
+    VContainer, VDataTable, VDialog, VExpansionPanel, VExpansionPanelText, VExpansionPanelTitle, VExpansionPanels, VFileInput, VForm, VIcon, VList, VListItem, VListItemTitle, VListSubheader, VMain, VMenu, VNavigationDrawer,
     VProgressCircular, VRadio, VRadioGroup, VSelect, VSpacer, VTable, VTextField, VTextarea, VTooltip
   },
   icons: {defaultSet: 'mdi', aliases, sets: {mdi}},

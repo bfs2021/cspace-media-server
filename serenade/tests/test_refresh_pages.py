@@ -95,7 +95,7 @@ def test_t134_before_any_refresh(driver: WebDriver, base_url: str) -> None:
     page.open(f"{BOTGARDEN}/refreshes")
     page.wait_for_text(page.TABLE, "No refreshes in the last 30 days.")
     page.open(f"{BOTGARDEN}/manual-refresh")
-    assert words(page.wait_for_text(page.CURRENT, "none yet").text).startswith("Current refresh:")
+    assert "Current refresh: none yet" in words(page.wait_for_text(page.CURRENT, "none yet").text)
     assert words(page.text_of(page.PENDING)) == "Pending refresh: none."
     assert page.text_of(page.CARD_HEAD) == "Replace with:"
     assert not page.count(page.CHECK), "a check button before an ETL list is chosen"
@@ -414,6 +414,7 @@ def test_t144_an_older_etl_list_is_checked_then_confirmed(driver: WebDriver, bas
     page.wait_for_text(page.DRY_HEAD, "The dry run passed", timeout=30)
     assert "Nothing has changed." in page.text_of(page.DRY)
     assert (len(page.refreshes(BOTGARDEN)), len(audit.entries(BOTGARDEN))) == before, "the dry run was recorded"
+    page.wait_until_gone(page.pick(older))  # the bottom card folds away
     # Another list: the result goes, and the check shows again.
     page.pick_list(1)
     page.wait_until_gone(page.DRY)
@@ -477,7 +478,7 @@ def test_t145_apply_with_override(driver: WebDriver, base_url: str, tmp_path: Pa
     page.type(page.MANUAL_REASON, APPLY_REASON)
     page.click(page.APPLY)
     applied = words(page.wait_for_text(page.APPLIED, "started", timeout=60).text)
-    assert f"Reason: Testing: {APPLY_REASON} (the delta threshold is overridden for it, and the team was emailed)" \
+    assert f"Reason: Testing: {APPLY_REASON} (the delta threshold is overridden for it, and the team was emailed)." \
         in applied, applied
     started = page.text_of(page.APPLIED_LINK)
     page.wait_for_state(BOTGARDEN, started, "Updated by override")
@@ -558,8 +559,8 @@ def test_t147_an_etl_list_made_from_the_simulator(driver: WebDriver, base_url: s
 
 @pytest.mark.after("test_t138_why_the_change_is_expected")
 def test_t148_the_words_etl_list_on_every_page(driver: WebDriver, base_url: str) -> None:
-    """Checklist section 44, step 6. No page says "servable list" or "servability update" (October 28, 2026); on
-    Alerts, the alert the step names, "An ETL list check failed"."""
+    """Checklist section 44, step 6. No page says "servable list" or "servability update" (October 28, 2026): on
+    Alerts, neither the failed check's alert nor the override's."""
     page = signed_in(driver, base_url)
     look_up, settings, alerts = (LookUpPage(driver, base_url), SettingsPage(driver, base_url),
                                  AlertsPage(driver, base_url))
@@ -578,13 +579,12 @@ def test_t148_the_words_etl_list_on_every_page(driver: WebDriver, base_url: str)
         "a refresh's page": (lambda: page.open_refresh(BOTGARDEN, made["failed"]), "ETL list check"),
         "Settings": (lambda: settings.open_page(BOTGARDEN), "ETL list check"),
         "Media look up": (looked_up, "ETL list"),
-        "Alerts": (lambda: alerts.open_page(BOTGARDEN), "An ETL list check failed"),  # its row only, below
+        "Alerts": (lambda: alerts.open_page(BOTGARDEN), "An ETL list check failed"),
         "Manual refresh": (manual_refresh, "ETL list"),
     }
     for name, (open_it, expected) in pages.items():
         open_it()
-        shown = alerts.row_with("An ETL list check failed") if name == "Alerts" else (By.TAG_NAME, "main")
-        text = words(page.text_of(shown))
+        text = words(page.text_of((By.TAG_NAME, "main")))
         assert expected in text, f"{name} doesn't say {expected!r}"
         for old in ("servable list", "servability"):
             assert old not in text.lower(), f"{name} says {old!r}"
