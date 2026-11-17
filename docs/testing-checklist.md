@@ -1547,8 +1547,8 @@ to PAHMA:
 ## 44. "ETL list", waiting or working, and the current and pending refreshes, on the local stack (15 minutes; before merging the pull request that adds it)
 
 **Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T134 checks step 1,
-T135 steps 4 and 5, and T148 step 6 (on Alerts, the "An ETL list check failed" alert). Steps 2 and 3 stay by hand: a
-refresh is working for only a few seconds.
+T135 steps 4 and 5, and T148 step 6 (on Alerts, the failed check's alert and the override's). Steps 2 and 3 stay by
+hand: a refresh is working for only a few seconds.
 
 What it checks: mockup version 55's state pills, the "since" line, Overview's current and pending refreshes and a
 pending refresh's four steps (decided October 28, 2026). With `./serena up`, sign in to PAHMA:
@@ -1613,8 +1613,8 @@ With `./serena up`, run `./serena etl pahma`, then `./serena failed-update pahma
 ## 46. Manual refresh as a dry run and Apply, on the local stack (20 minutes; before merging the pull request that adds it)
 
 **Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden, unless said): T134
-and T144 check steps 1 to 4, except that the bottom card folds away after a dry run (by hand); T19, on UCJEPS, step 5,
-and a pending refresh whose check failed replaced without a confirmation (step 8's rule); T145 step 6; T146 step 7.
+and T144 check steps 1 to 4; T19, on UCJEPS, step 5, and a pending refresh whose check failed replaced without a
+confirmation (step 8's rule); T145 step 6; T146 step 7.
 
 What it checks: Manual refresh reworked (decided October 28, 2026, mockup version 55); it replaces section 39 for
 this page. With `./serena up`, run `./serena etl pahma` twice (two ETL lists to choose from), and sign in to PAHMA:

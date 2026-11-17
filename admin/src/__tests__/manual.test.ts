@@ -53,7 +53,7 @@ describe('Manual refresh', () => {
   it('shows the current and pending refreshes, and the check only once an ETL list is chosen', async () => {
     fakeApi(choices(WAITING))
     const wrapper = await at('/pahma/manual-refresh', ManualRefresh)
-    expect(wrapper.find('#manual-current').text()).toContain('pahma-2026-10-10-1')
+    expect(wrapper.find('#manual-current').text()).toContain('Current refresh: pahma-2026-10-10-1')
     expect(wrapper.find('#manual-current').text()).toContain('Serena serves from it')
     expect(wrapper.find('#manual-pending').text()).toContain('pahma-2026-10-12-1')
     expect(wrapper.find('#manual-pending').text()).toContain('ETL list received')
@@ -77,8 +77,13 @@ describe('Manual refresh', () => {
     setup(wrapper).source = 'etl'
     await flushPromises()
     await wrapper.find('#pick-pahma-2026-10-10-1').setValue(true)
+    // The bottom card is a panel with a title to open and close it: open while a list is chosen, folded away once
+    // it's checked.
+    expect(wrapper.find('#manual-picker button.v-expansion-panel-title').text()).toBe('Previous ETL lists')
+    expect(wrapper.find('#manual-picker .v-expansion-panel--active').exists()).toBe(true)
     await wrapper.find('form').trigger('submit')
     await flushPromises()
+    expect(wrapper.find('#manual-picker .v-expansion-panel--active').exists()).toBe(false)
     expect(posts(calls).map(c => c.path)).toEqual(['/museums/pahma/servable-lists/pahma-2026-10-10-1/dry-run'])
     expect(wrapper.find('#manual-dry-head').text()).toBe('The dry run passed')
     expect(wrapper.find('#manual-dry').text()).toContain('against the last ETL list update (pahma-2026-10-10-1). Nothing has changed.')
@@ -200,7 +205,7 @@ describe('Manual refresh', () => {
     expect(posts(calls).at(-1)?.body).toEqual({refresh_id: 'pahma-2026-10-11-1', reason: 'PAHMA republished half its images',
       open_refresh: '', kind: 'bulk_change'})
     expect(wrapper.find('#manual-applied').text()).toContain('Known bulk change in CollectionSpace')
-    expect(wrapper.find('#manual-applied').text()).toContain('the delta threshold is overridden for it')
+    expect(wrapper.find('#manual-applied').text()).toContain('(the delta threshold is overridden for it, and the team was emailed).')
     wrapper.unmount()
   })
 
