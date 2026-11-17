@@ -33,7 +33,10 @@ The goal is the most tests per dataset, with the fewest resets (Richard, October
 - **The dataset** (`dataset.py`) is daily refreshes by the fake ETL, built once per run: PAHMA's, Cinefiles' (for its
   PDFs), and two of UCJEPS's, the second of 3 rows, which fails its servable list check (for the alerts and the
   refreshes); and UCJEPS's servable lists of 20 and 3 rows, for the admin refreshes the refresh tests start. Its CSIDs are the same
-  every run, and `dataset.py` checks the run built the records it expects.
+  every run, and `dataset.py` checks the run built the records it expects. The Botanical Garden starts with no
+  refresh: `test_refresh_pages.py` makes its refreshes itself, in the test stack's worker, with the fake ETL and the
+  failed-update tool (`stack.py`: `fake_etl`, `etl_list`, `failed_update`), as `./serena etl` and
+  `./serena failed-update` do.
 - **Records have roles.** A *shared* record may be looked at by any test, never changed. A *reserved* record is set
   aside for the tests that change it, and they put it back where they can. Add a role in `dataset.py` when a test
   needs a record of its own, and say which tests use it.
@@ -44,8 +47,8 @@ The goal is the most tests per dataset, with the fewest resets (Richard, October
   it's skipped rather than failing for the same reason.
 - So the tests run in order, never in parallel or shuffled: each file's tests in file order, and the files in
   `conftest.py`'s `FILE_ORDER`: serving first, then Past requests (which reads the serving tests' lines), then UCJEPS's
-  alerts (which no PAHMA test reads), then the refreshes (which change UCJEPS after its alerts are read), the PAHMA
-  look up and recall tests, the settings (BAMPFA's, and PAHMA's placeholder image, each put back), the audit log
+  alerts (which no PAHMA test reads), then the refreshes (which change UCJEPS after its alerts are read), the refresh
+  pages (the Botanical Garden's, which no other test reads), the PAHMA look up and recall tests, the settings (BAMPFA's, and PAHMA's placeholder image, each put back), the audit log
   (which reads what all of them recorded), the layout and navigation checks (which only look, at the lines and
   entries the others left), sign-in and sessions (T45 signs everyone out of PAHMA), and last, Serena unreachable
   (T47 stops and starts its web service). A new file goes where its changes belong.
@@ -68,6 +71,7 @@ its inventory ID (`test_t3_…`), and its docstring names the checklist steps.
 | `tests/test_unreachable.py` | T47, last of all: with Serena's web service stopped (the test stack's web container), "Sign everyone out" and Media look up say "Serena can't be reached right now. Try again in a minute. (502)", and the dialog stays open; Serena is started again however the test ends (sections 20, 21) |
 | `tests/test_alerts.py` | Alerts, T23 to T25, on UCJEPS: a failed check's alert on the bell, the banner and the Alerts page; its text, with its refresh ID as a link; acknowledging (sections 14, 18, 20). T84 and T85, on BAMPFA (two alerts from a setting changed and put back): All · Waiting, the waiting rows' bar, the banner and the bell opening Waiting; Acknowledge all, its dialog's list and links, and none waiting after. T87 to T89 (20 more alerts, raised through the admin API): All held through sorting, paging and Back, Waiting back to page 1, the audit log's link opening All; the dialog's order, Cancel, no reason, only its list scrolling in a short window, a link to another page of the table, one audit entry per alert; and a second browser acknowledging one while the dialog is open (section 28) |
 | `tests/test_refreshes.py` | Refreshes, T16 to T21: Past refreshes, Start a refresh's missing fields, and on UCJEPS a failed check's page, overriding the threshold, an admin refresh repairing a failed one, sorting and paging 30 refreshes (sections 11, 14, 15, 21) |
+| `tests/test_refresh_pages.py` | The refresh pages, T134 to T148, on the Botanical Garden, each building on the one before: Overview before any refresh; a refresh's state as a pill and a pending refresh's four steps; how far past the delta threshold; the override's "Why is the change expected?", its alert and audit entry; the Overridden filter; a failed ETL list update, its retry, and a retry that comes second (two browsers); Manual refresh with an older ETL list, Apply with override, a file that isn't an ETL list, and an ETL list made from the simulator; and the words "ETL list" on every page (sections 35, 36, 40 to 46 and 51) |
 | `tests/test_lookup_and_recalls.py` | The pilot, T2 to T6: Media look up, a recall and its cancellation, CollectionSpace unreachable (sections 11, 17, 19). Recalls, T74 to T81: the preview (what Serena finds, paths and URLs, more than 12 CSIDs and a text file, an already recalled record), a missing reason, a recall's row and its files, Past requests and the audit log, and the recall's alert, T26 (sections 17 to 21). Media look up, T65 to T73: every size of a Media CSID, the comparison with CollectionSpace, the page's address, paths it forgives and refuses, an unknown CSID, the sizes box, and a record changed in CollectionSpace (off the web, replaced, soft-deleted), then put back (sections 17, 19 to 21, 23) |
 | `aws/test_deployment.py` | A deployed environment, T90 to T108 ("The AWS tests", below; sections 24, 25, 27, and the shared root's addresses) |
 | `qa/test_qa_*.py` | PAHMA QA's synthetic records on ucb-stage2, T109 to T133 ("The synthetic-record tests", below; section 63); `test_qa_records.py`, only with `--check-records`, reports the records' state |

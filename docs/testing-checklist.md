@@ -1312,6 +1312,10 @@ web role's policy with a `RequestCountsRead` statement, and the task definitions
 
 ## 35. A refresh's state as a pill, on the local stack (5 minutes; before merging the pull request that adds it)
 
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T135 checks steps 1
+to 3, and that a pill's icon is hidden from screen readers, so only its words are read out. Step 4, with VoiceOver
+itself, stays by hand.
+
 What it checks: issue #107. With `./serena up`, run `./serena etl pahma`, then `./serena etl pahma --rows 3` (fewer rows
 than the delta threshold allows, so its check fails; `--failed` doesn't call Serena at all), and sign in to PAHMA:
 
@@ -1323,6 +1327,11 @@ than the delta threshold allows, so its check fails; `--failed` doesn't call Ser
 - [ ] **4. A screen reader.** With VoiceOver on the failed row, expect only "Servable list check failed" read out for
   the State cell, not the icon.
 ## 36. An overridden delta threshold, on the local stack (10 minutes; before merging the pull request that adds it)
+
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T138 checks steps 1
+and 3 (the banner, "Updated by override" without a reload, the check's heading and the line under it), and T140 the
+orange pill on Past refreshes and Overview once it's updated (step 4). By hand: step 2, step 4's blue pill with the
+shield while it checks, its hover and VoiceOver, and step 5.
 
 What it checks: issues #108 and #110. With `./serena up`, run `./serena etl pahma`, then `./serena etl pahma --rows 3`
 (its check fails on the delta threshold alone), and sign in to PAHMA:
@@ -1441,6 +1450,10 @@ What it checks: issue #118 (decisions MR1 to MR15; mockup versions 49 and 50). W
 
 ## 40. How far past the delta threshold, on the local stack (10 minutes; before merging the pull request that adds it)
 
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden, where the last ETL
+list update had 20 rows): T136 checks steps 1 to 3 and 6, T138 step 4, and T145 step 5 with an uploaded list. The red
+of the percent stays by hand (the tests check that it's marked).
+
 What it checks: issue #120's first idea (mockup version 47; "far past" from 10 times the threshold, decided October
 27, 2026). With `./serena up`, run `./serena etl pahma` (21 rows), then `./serena etl pahma --rows 18` (it fails on the
 delta threshold alone, about 2 times past it), and sign in to PAHMA:
@@ -1449,7 +1462,8 @@ delta threshold alone, about 2 times past it), and sign in to PAHMA:
   servability update; <m> times the 5% threshold)", with the percent in red, and no red note under it.
 - [ ] **2. The dialog.** Click "Override the delta threshold": expect "this list changes <n>% of the rows, <m> times
   the 5% threshold" in its first paragraph, the percent in red, and no "Far past" note. Cancel.
-- [ ] **3. Far past it.** Run `./serena etl pahma --rows 3` and open its refresh (the earlier one is Abandoned).
+- [ ] **3. Far past it.** Run `./serena etl pahma --rows 3` and open its refresh (the same one: the ETL job's next
+  run takes up its pending refresh).
   Expect, under the check's line, a red note: "Far past the delta threshold. <n>% is <m> times the threshold: the last
   servability update had 21 rows, this list has 4. A change this large is usually a first load or the wrong file.
   Check that the file is the right one before you override." Open the dialog: the same note, and its first paragraph
@@ -1464,6 +1478,9 @@ delta threshold alone, about 2 times past it), and sign in to PAHMA:
 
 ## 41. The Overridden filter on Past refreshes, on the local stack (5 minutes; before merging the pull request that adds it)
 
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T137 checks step 1,
+and T140 steps 2 to 4.
+
 What it checks: issue #120's third idea (mockup version 47). With `./serena up`, run `./serena etl pahma`, then
 `./serena etl pahma --rows 3` (its check fails on the delta threshold), and sign in to PAHMA:
 
@@ -1477,6 +1494,10 @@ What it checks: issue #120's third idea (mockup version 47). With `./serena up`,
   in the menu: All again.
 
 ## 42. Why the change is expected, on the local stack (10 minutes; before merging the pull request that adds it)
+
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T138 checks steps 1
+to 3, T139 step 4 (the email itself stays by hand), T145 step 5 with an uploaded list, and T141 step 6 for Retry the
+ETL list update. A Recall's and a Settings change's reasons are T77's and T34's.
 
 What it checks: issue #120's fourth idea (mockup version 47). With `./serena up`, run `./serena etl pahma`, then
 `./serena etl pahma --rows 3` (its check fails on the delta threshold), and sign in to PAHMA:
@@ -1502,6 +1523,10 @@ What it checks: issue #120's fourth idea (mockup version 47). With `./serena up`
 
 ## 43. A refresh's reasons in two lists, on the local stack (10 minutes; before merging the pull request that adds it)
 
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T135 checks steps 1
+and 2, and T138 step 3. T19, on UCJEPS, checks step 4's two lines for a manual refresh and the refresh it replaced.
+Step 5 stays by hand.
+
 What it checks: issue #120's second idea (mockup version 47). With `./serena up`, run `./serena etl pahma`, and sign in
 to PAHMA:
 
@@ -1520,6 +1545,10 @@ to PAHMA:
   refresh started before the servability update ran" under What went wrong.
 
 ## 44. "ETL list", waiting or working, and the current and pending refreshes, on the local stack (15 minutes; before merging the pull request that adds it)
+
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T134 checks step 1,
+T135 steps 4 and 5, and T148 step 6 (on Alerts, the "An ETL list check failed" alert). Steps 2 and 3 stay by hand: a
+refresh is working for only a few seconds.
 
 What it checks: mockup version 55's state pills, the "since" line, Overview's current and pending refreshes and a
 pending refresh's four steps (decided October 28, 2026). With `./serena up`, sign in to PAHMA:
@@ -1550,6 +1579,10 @@ pending refresh's four steps (decided October 28, 2026). With `./serena up`, sig
 
 ## 45. A failed ETL list update, on the local stack (15 minutes; before merging the pull request that adds it)
 
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T141 checks steps 1
+and 2, T142 step 3, and T143 step 4, with two browsers. Steps 5 and 6 stay by hand: Serena's own retry comes after 10
+minutes.
+
 What it checks: the failed update's rules (decided October 28, 2026; mockup versions 55 and 56): Serena retries a
 failed update by itself, an admin's retry, a retry that comes second, and "partly replaced". An update can't be made
 to fail on the local stack, so `./serena failed-update` records one, repeating the museum's last updated ETL list.
@@ -1578,6 +1611,10 @@ With `./serena up`, run `./serena etl pahma`, then `./serena failed-update pahma
   covered by the backend's tests: it would take 6 hours here.)
 
 ## 46. Manual refresh as a dry run and Apply, on the local stack (20 minutes; before merging the pull request that adds it)
+
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden, unless said): T134
+and T144 check steps 1 to 4, except that the bottom card folds away after a dry run (by hand); T19, on UCJEPS, step 5,
+and a pending refresh whose check failed replaced without a confirmation (step 8's rule); T145 step 6; T146 step 7.
 
 What it checks: Manual refresh reworked (decided October 28, 2026, mockup version 55); it replaces section 39 for
 this page. With `./serena up`, run `./serena etl pahma` twice (two ETL lists to choose from), and sign in to PAHMA:
@@ -1718,6 +1755,10 @@ which are public in this repository, from anyone in `ADMIN_CIDRS` (campus and th
 - [ ] **9. Leave it running** for stage 2's next phase (PAHMA's QA records, with the pipeline, D268).
 
 ## 51. Make an ETL list from the simulator, on the local stack (10 minutes; before merging the pull request that adds it)
+
+**Automated** (`./serena test`; `serenade/tests/test_refresh_pages.py`, on the Botanical Garden): T147 checks steps 1
+to 4. A soft-deleted record is still counted among the records ("19 rows from 20 records; not listed: 1
+soft-deleted").
 
 What it checks: Manual refresh's "Make one from the simulator" (serena-fakecspace-questions F12, mockup version 57).
 With `./serena up` (rebuilt: `SERENA_SIMULATED_CSPACE` is new) and `./serena etl pahma`, sign in to PAHMA:
