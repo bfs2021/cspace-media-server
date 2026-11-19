@@ -21,6 +21,7 @@ anyio==4.15.1 \
     --hash=sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94
     # via
     #   -c requirements.txt
+    #   fastapi
     #   starlette
 defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
@@ -32,9 +33,9 @@ fakecspace==0.3.0 \
     --hash=sha256:4ed7a4d271581b7dd3d2c87be97c536c444f05d7241c47c2f73295db3f43b701 \
     --hash=sha256:7324e70e4c017ac23858d984251fe5e7dde094b8c04824e7f2dbe2c7861a740d
     # via -r requirements-sim.in
-fastapi==0.162.0 \
-    --hash=sha256:3785963de305dd09912426cb81f2d230fce98ab3521cdfe97265c8d14983128c \
-    --hash=sha256:6a22c1e2e6e32e0633ee7e170f00009a29b8228b16feb219ee42f32fd8d88a8f
+fastapi==0.162.7 \
+    --hash=sha256:b7503029c8ef2d2d5fea9049294cf8d0f2805c6621f4677ede269fce19f01efb \
+    --hash=sha256:fa3be857122ec8d91d4d234e86ac19acf4ef23f5c6c3dfcce78ec0c27c0c5ab4
     # via
     #   -c requirements.txt
     #   fakecspace
