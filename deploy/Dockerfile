@@ -6,8 +6,8 @@
 # Base images come from Amazon ECR Public's copies of the Docker official images (no Docker Hub rate limits).
 
 # ---- the admin app: a production build ---------------------------------------------------------------------------
-FROM public.ecr.aws/docker/library/node:22.23.4-alpine AS admin
-# eMudhra CA compromise (Oct 2026): Node 22.23.4 refuses the compromised CAs itself, but Alpine's system bundle
+FROM public.ecr.aws/docker/library/node:22.23.5-alpine AS admin
+# eMudhra CA compromise (Oct 2026): Node 22.23.4 and later refuse the compromised CAs, but Alpine's system bundle
 # (curl, wget, OpenSSL) needs ca-certificates 20261020-r0; the build fails if the bundle still holds the emSign root.
 RUN apk add --no-cache --upgrade ca-certificates-bundle \
     && node -e 'const {X509Certificate} = require("crypto"); const pem = require("fs").readFileSync("/etc/ssl/certs/ca-certificates.crt", "utf8").match(/-----BEGIN CERTIFICATE-----[^-]+-----END CERTIFICATE-----/g); if (pem.some(p => new X509Certificate(p).fingerprint256.startsWith("86:A1:EC:BA"))) { console.error("The system CA bundle still holds emSign ECC Root CA - G3"); process.exit(1); }'
