@@ -15,6 +15,9 @@ signed link. The admin app follows the daily refreshes and alerts, shows what Se
 placeholder image's Media record among them. Watermarking (the Botanical Garden) is not built yet. The design is
 `docs/design.md`.
 
+For developers and ops: the [CollectionSpace hosting inventory](https://drive.google.com/file/d/1l4In1IwlmcXnb_7g05Sk5YJgMP3r6OQR/view) (PDF; UC Berkeley sign-in
+required) lists what runs today on the hosts of the legacy webapps, Solr, the ETL and Glimmer.
+
 ## What it will do
 
 - Serve the images, 3D files and documents that the museums' public portals
