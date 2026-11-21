@@ -39,8 +39,12 @@
 #   ./serena aws rehearsal-vpc [destroy]   for a stage 2 rehearsal in your own account (REHEARSAL=true): make (or,
 #                              once the environment is destroyed, delete) what Ops provides for stage 2, a VPC and a
 #                              deployer role with only the stage 2 policy, as ADMIN_PROFILE
-#   ./serena aws settings push|show|delete   for an environment with SETTINGS=ssm (D273): put its settings in SSM
-#                              Parameter Store from its files (shows what changes and asks), list them, or delete them
+#   ./serena aws settings push|set|pull|show|delete   for an environment with SETTINGS=ssm (D273), where SSM
+#                              Parameter Store holds the settings and the files are only this computer's copy: push
+#                              puts a new environment's there from its files, once; set KEY [VALUE] changes one (no
+#                              VALUE removes it) in SSM and in the files here; pull brings the files here up to date;
+#                              show lists them; delete removes them once the environment is destroyed. push, set and
+#                              delete run as ADMIN_PROFILE where the environment has one; pull and show as the deployer
 #   ./serena aws pipeline [destroy]   as the account's administrator (ADMIN_PROFILE): make (or delete) the environment's
 #                              deploy pipeline (deploy/terraform/pipeline, DP1): GitHub's OIDC provider if the account
 #                              has none, the roles the deploy workflow assumes, the CodeBuild projects and their role
@@ -53,7 +57,9 @@
 # deploy/environments/NAME.conf; NAME.local.conf (not committed) holds the account number and allowed addresses.
 # With SETTINGS=ssm (D273, DP10), every setting but AWS_PROFILE, AWS_REGION, SERENA_ENV_NAME and
 # ADMIN_PROFILE is read from SSM Parameter Store in the account instead (/serena-<name>/settings/<SETTING>),
-# where ./serena aws settings push puts them from the files; the files then matter only to settings push.
+# their one copy: anyone with access may change one there (Ops too, in the AWS console), so nobody has to tell anyone.
+# ./serena aws settings push puts a new environment's there from the files, once; then settings set changes one, and
+# settings pull brings the files here up to date.
 # TERRAFORM_ROOT says which Terraform builds it (D302): personal (the default: personal environments and stage 1,
 # CloudFront in front of everything) or shared (QA and production, the split). A shared environment also needs
 # VPC_ID, APP_SUBNET_IDS, LB_SUBNET_IDS, DOMAIN_NAME, ETL_CIDRS, ADMIN_CIDRS and APACHE_CIDRS, and is deployed here
@@ -121,7 +127,9 @@ load_env() {
   # The settings, a rehearsal's VPC and the pipeline are the account administrator's to make (they come before the
   # deployer role exists, or make it).
   DEPLOYER_PROFILE="$AWS_PROFILE"
-  case "$CMD" in settings|rehearsal-vpc|pipeline) [ -z "$ADMIN_PROFILE" ] || AWS_PROFILE="$ADMIN_PROFILE" ;; esac
+  # settings pull and show only read, which the deployer may.
+  case "$CMD:${SETTINGS_SUB:-}" in settings:pull|settings:show) ;;
+    settings:*|rehearsal-vpc:*|pipeline:*) [ -z "$ADMIN_PROFILE" ] || AWS_PROFILE="$ADMIN_PROFILE" ;; esac
   # The pipeline's builds (DP11) sign in as the build's own role, and always read the settings from SSM.
   IN_BUILD=false
   case "$CMD" in pipeline-plan|pipeline-apply)
@@ -129,13 +137,13 @@ load_env() {
     IN_BUILD=true SETTINGS=ssm; unset AWS_PROFILE ;;
   esac
   case "${SETTINGS:=files}" in files|ssm) ;; *) die "SETTINGS must be files or ssm ($CONF, $LOCAL)." ;; esac
-  [ "$SETTINGS" = files ] || [ "$CMD" = settings ] || from_ssm   # settings push reads the files
+  [ "$SETTINGS" = files ] || [ "$CMD" = settings ] || from_ssm   # settings compares the files with SSM itself
   ROOT="${TERRAFORM_ROOT:-personal}"
   case "$ROOT" in
     personal) ;;
     shared)
       local need needs="VPC_ID APP_SUBNET_IDS LB_SUBNET_IDS DOMAIN_NAME"
-      # rehearsal-vpc makes the VPC and the subnets, and saves them; settings push may come before it
+      # rehearsal-vpc makes the VPC and the subnets, and saves them; the settings commands may come before it
       [ "$CMD" != rehearsal-vpc ] && [ "$CMD" != settings ] || needs=""
       for need in $needs; do
         [ -n "$(eval echo "\$$need")" ] || die "'$ENV' is on the shared root: set $need in $(settings_home) (D303, D293)."
@@ -326,7 +334,7 @@ signed_museum() {  # signed_museum MUSEUM: whether its configuration allows sign
 }
 
 # With SETTINGS=ssm, a setting saved (or removed) by a command goes to SSM, which the commands read, and to the
-# .local.conf as well, so that the files stay a whole copy and a later settings push doesn't undo it.
+# .local.conf as well, so that the files here stay a whole copy.
 save_local() {  # save_local KEY VALUE: set one setting in the environment's .local.conf (and SSM, SETTINGS=ssm)
   local key="$1" value="$2" tmp
   if [ "$SETTINGS" = ssm ] && [ "$CMD" != settings ] && is_ssm_setting "$key"; then put_setting "$key" "$value"; fi
@@ -348,7 +356,8 @@ remove_local() {  # remove_local KEY: remove one setting from the environment's 
 # ---- settings in SSM Parameter Store (SETTINGS=ssm; D273, DP10) ------------------------------------------------------
 # One String parameter per setting, /serena-<name>/settings/<SETTING>, in the environment's account, so that the
 # pipeline's build and an admin's ./serena aws read the same values. They are private (addresses, the team's list,
-# Ops's VPC) but not secret. ./serena aws settings push puts them there from the files; reading them needs only
+# Ops's VPC) but not secret. ./serena aws settings push puts a new environment's there from the files, and settings
+# set changes one; reading them needs only
 # ssm:DescribeParameters and ssm:GetParameters, which the deployer policies have.
 SSM_SETTINGS="ACCOUNT_ID ALLOWED_CIDRS ETL_CIDRS ADMIN_CIDRS SIMULATED_CSPACE SIMULATED_MUSEUMS ENV_LABEL CSPACE_TENANTS
   OPEN_IMAGES WAF PROTECT_DATA WEB_COUNT ALERT_EMAIL TERRAFORM_ROOT APACHE_CIDRS VPC_ID APP_SUBNET_IDS LB_SUBNET_IDS
@@ -362,7 +371,7 @@ PIPELINE_SETTINGS="REAL_DATA_ACCOUNT"
 is_ssm_setting() { case " $(echo $SSM_SETTINGS) " in *" $1 "*) true ;; *) false ;; esac; }
 is_pipeline_setting() { case " $PIPELINE_SETTINGS " in *" $1 "*) true ;; *) false ;; esac; }
 settings_path() { echo "/$NAME/settings"; }
-settings_home() { [ "$SETTINGS" = ssm ] && echo "SSM ($(settings_path)/, ./serena aws settings push)" || echo "$LOCAL"; }
+settings_home() { [ "$SETTINGS" = ssm ] && echo "SSM ($(settings_path)/, ./serena aws settings set)" || echo "$LOCAL"; }
 
 ssm_settings() {  # the environment's settings in SSM, one "SETTING<tab>VALUE" line each, sorted; nothing if none
   local names
@@ -410,7 +419,7 @@ Put them there from $CONF and $LOCAL: ./serena aws settings push --env $ENV"
   done
   for key in $PIPELINE_SETTINGS; do printf -v "$key" '%s' "$(setting_in "$key" "$lines")"; done
   [ "$ACCOUNT_ID" = "$who" ] ||
-    die "SSM's ACCOUNT_ID for '$ENV' (${ACCOUNT_ID:-none}) isn't the account it is in ($who): ./serena aws settings push --env $ENV"
+    die "SSM's ACCOUNT_ID for '$ENV' (${ACCOUNT_ID:-none}) isn't the account it is in ($who). Stopped: check the account the profile signs in to."
   while IFS='	' read -r key value; do
     [ -n "$key" ] || continue
     is_ssm_setting "$key" || is_pipeline_setting "$key" ||
@@ -423,29 +432,39 @@ EOF
     [ -z "$value" ] || [ "$value" = "${!key}" ] || differ="$differ $key"
   done
   [ -z "$differ" ] ||
-    echo "Note: the files on this computer differ from SSM in$differ; SSM's are used (./serena aws settings show)." >&2
+    echo "Note: the files on this computer differ from SSM in$differ; SSM's are used (./serena aws settings pull brings the files up to date)." >&2
 }
 
-# ./serena aws settings push|show|delete (SETTINGS=ssm). The account is this computer's ACCOUNT_ID, asked the first
-# time as for a deploy; they run as the environment's ADMIN_PROFILE, if it has one (load_env).
+# ./serena aws settings push|set|pull|show|delete (SETTINGS=ssm). The account is this computer's ACCOUNT_ID, asked the
+# first time as for a deploy; push, set and delete run as the environment's ADMIN_PROFILE, if it has one, pull and show
+# as the deployer (load_env).
 settings() {
+  SETTINGS_SUB="${1:-}"
   load_env
   [ "$SETTINGS" = ssm ] || die "'$ENV' keeps its settings in $CONF and $LOCAL. To keep them in SSM Parameter Store instead
 (D273), add SETTINGS=ssm to $LOCAL, then: ./serena aws settings push --env $ENV"
   check_account
   case "${1:-}" in
     push) settings_push ;;
+    set) [ $# -ge 2 ] && [ $# -le 3 ] || die "./serena aws settings set --env $ENV SETTING [VALUE] (no VALUE removes it)"
+      settings_set "$2" "${3:-}" ;;
+    pull) settings_pull ;;
     show) settings_show ;;
     delete) settings_delete ;;
-    *) die "./serena aws settings push|show|delete" ;;
+    *) die "./serena aws settings push|set|pull|show|delete" ;;
   esac
 }
 
-# The files' settings (after load_env's defaults), compared with SSM's; asks, then writes the changes. Always asks,
-# even with SERENA_AWS_YES=1: another computer's files may be out of date, and a missing setting is deleted.
+# A new environment's settings, from the files (after load_env's defaults) to SSM, once: SSM is then their one copy,
+# which anyone with access may change (Ops too, in the console), so the files here may be out of date. Always asks,
+# even with SERENA_AWS_YES=1.
 settings_push() {
   local lines key value old changes="" ok
   lines="$(ssm_settings)"
+  [ -z "$(settings_in_files_only "$lines")" ] ||
+    die "SSM already has the settings of '$ENV' (account $ACCOUNT_ID, $(settings_path)/), and they may have changed since
+these files were written. Change one with: ./serena aws settings set --env $ENV SETTING VALUE
+Bring the files here up to date with: ./serena aws settings pull --env $ENV"
   for key in $SSM_SETTINGS; do
     value="${!key}"; old="$(setting_in "$key" "$lines")"
     [ "$value" != "$old" ] || continue
@@ -472,23 +491,87 @@ settings_push() {
   echo "Done. ./serena aws plan --env $ENV shows what they change."
 }
 
+settings_in_files_only() {  # settings_in_files_only LINES: ssm_settings' LINES, less what ./serena aws pipeline writes
+  local key value
+  while IFS='	' read -r key value; do
+    [ -z "$key" ] || is_pipeline_setting "$key" || echo "$key"
+  done <<EOF
+$1
+EOF
+}
+
+# One setting, in SSM and in the files here (as ADMIN_PROFILE where the environment has one); no VALUE removes it. The
+# other settings aren't touched, so nobody else's change is undone. Always asks, even with SERENA_AWS_YES=1.
+settings_set() {  # settings_set SETTING VALUE
+  local key="$1" value="$2" lines old ok
+  is_pipeline_setting "$key" && die "$key is set by ./serena aws pipeline, not settings set."
+  is_ssm_setting "$key" || die "$key isn't a setting ./serena aws keeps in SSM. Those are: $(echo $SSM_SETTINGS)"
+  [ "$key" != ACCOUNT_ID ] || die "ACCOUNT_ID is the account the settings are in ($ACCOUNT_ID): it can't be set."
+  case "$key" in
+    SIMULATED_CSPACE|OPEN_IMAGES|WAF|PROTECT_DATA|CREATE_GATEWAY_ENDPOINTS|REHEARSAL)
+      case "$value" in true|false|"") ;; *) die "$key must be true or false." ;; esac ;;
+    TERRAFORM_ROOT) case "$value" in personal|shared|"") ;; *) die "TERRAFORM_ROOT must be personal or shared." ;; esac ;;
+    WEB_COUNT) case "$value" in [1-9]|[1-9][0-9]|"") ;; *) die "WEB_COUNT must be a number of web tasks, such as 2." ;; esac ;;
+  esac
+  lines="$(ssm_settings)"
+  [ -n "$(settings_in_files_only "$lines")" ] ||
+    die "'$ENV' has no settings in SSM yet (account $ACCOUNT_ID, $(settings_path)/): ./serena aws settings push --env $ENV"
+  old="$(setting_in "$key" "$lines")"
+  if [ "$value" = "$old" ]; then echo "$key is already ${value:-not set} in SSM."
+  else
+    echo "In SSM, account $ACCOUNT_ID, $(settings_path)/:"
+    if [ -z "$old" ]; then echo "  + $key=$value"
+    elif [ -z "$value" ]; then echo "  - $key (was $old)"
+    else echo "  ~ $key=$value (was $old)"
+    fi
+    read -r -p "Write this to SSM? The next deploy uses it. [y/N] " ok
+    case "$ok" in y|Y|yes) ;; *) die "Stopped; nothing was changed." ;; esac
+    put_setting "$key" "$value"
+  fi
+  save_local "$key" "$value"   # CMD=settings: the files here only
+  echo "Done. ./serena aws plan --env $ENV shows what it changes."
+}
+
+# The files here brought up to date with SSM: each setting that differs is written to the .local.conf (one SSM doesn't
+# have, as empty). Only the files here change; the profiles and SETTINGS, which are always the files', are kept.
+settings_pull() {
+  local lines key value changes=0
+  lines="$(ssm_settings)"
+  [ -n "$(settings_in_files_only "$lines")" ] ||
+    die "'$ENV' has no settings in SSM yet (account $ACCOUNT_ID, $(settings_path)/): ./serena aws settings push --env $ENV"
+  for key in $SSM_SETTINGS; do
+    value="$(setting_in "$key" "$lines")"
+    [ "$value" != "${!key}" ] || continue
+    # Not in SSM, and only a default here (load_env's, not in the files): nothing to bring.
+    if [ -z "$value" ] && ! grep -q "^[[:space:]]*$key=" "$CONF" "$LOCAL" 2>/dev/null; then continue; fi
+    echo "  $key=$value   (was ${!key:-not set})"
+    save_local "$key" "$value"
+    changes=$((changes + 1))
+  done
+  if [ "$changes" = 0 ]; then echo "The files here already match SSM ($(settings_path)/)."
+  else echo "Updated $changes setting(s) in $LOCAL from SSM ($(settings_path)/)."
+  fi
+}
+
 settings_show() {
-  local lines key value
+  local lines key value differ=""
   lines="$(ssm_settings)"
   echo "'$ENV' in SSM, account $ACCOUNT_ID, $(settings_path)/:"
   [ -n "$lines" ] || { echo "  none yet (./serena aws settings push --env $ENV)"; return 0; }
   while IFS='	' read -r key value; do
     if is_pipeline_setting "$key"; then echo "  $key=$value   (set by ./serena aws pipeline)"
     elif ! is_ssm_setting "$key"; then echo "  $key=$value   (not a setting ./serena aws reads; ignored)"
-    elif [ "${!key}" != "$value" ]; then echo "  $key=$value   (the files here: ${!key:-not set})"
+    elif [ "${!key}" != "$value" ]; then echo "  $key=$value   (the files here: ${!key:-not set})"; differ=yes
     else echo "  $key=$value"
     fi
   done <<EOF
 $lines
 EOF
   for key in $SSM_SETTINGS; do
-    [ -z "${!key}" ] || [ -n "$(setting_in "$key" "$lines")" ] || echo "  ($key isn't in SSM; the files here: ${!key})"
+    [ -z "${!key}" ] || [ -n "$(setting_in "$key" "$lines")" ] ||
+      { echo "  ($key isn't in SSM; the files here: ${!key})"; differ=yes; }
   done
+  [ -z "$differ" ] || echo "SSM's are the ones used. To bring the files here up to date: ./serena aws settings pull --env $ENV"
 }
 
 settings_delete() {  # only once the environment is destroyed: a deploy, plan or destroy needs them

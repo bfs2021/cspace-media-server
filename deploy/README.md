@@ -50,7 +50,7 @@ and alarms (pull request 18). The simulated CollectionSpace and the fake ETL, as
 | `./serena aws pipeline [destroy]` | As the account's administrator (`ADMIN_PROFILE`), for an environment on the shared root with `SETTINGS=ssm`: makes (or deletes) its deploy pipeline, `terraform/pipeline`. Checks its GitHub environments first, asks for the account's number where there is real data, shows Terraform's plan and asks, then offers to set the GitHub environments' secrets with `gh`. See "The deploy pipeline". |
 | `./serena aws sim-secrets` | With the simulator, in an environment the pipeline deploys: sets what `deploy` sets itself from a laptop (the simulator's account, random ETL tokens and portal keys), where they aren't set. Nothing is shown. |
 | `./serena aws pipeline-plan` / `pipeline-apply` | Only in the pipeline's builds (`pipeline/`): they refuse to run anywhere else. |
-| `./serena aws settings push` / `show` / `delete` | For an environment with `SETTINGS=ssm` (D273): puts its settings in SSM Parameter Store from its files, showing what changes and asking first (always, even with `SERENA_AWS_YES=1`); lists them, marking any the files on this computer disagree with; or, once the environment is destroyed, deletes them (it asks for the environment's name). See "Settings in SSM Parameter Store". |
+| `./serena aws settings push` / `set` / `pull` / `show` / `delete` | For an environment with `SETTINGS=ssm` (D273), where SSM Parameter Store holds the settings: `push` puts a new environment's there from its files, once (it shows them and asks); `set SETTING [VALUE]` changes one (no value removes it) in SSM and in the files here, after asking; `pull` brings the files here up to date with SSM; `show` lists them, marking any the files here disagree with; `delete`, once the environment is destroyed, deletes them (it asks for the environment's name). `push`, `set` and `delete` ask even with `SERENA_AWS_YES=1`. See "Settings in SSM Parameter Store". |
 
 **Picking the environment.** Add `--env NAME`, or set `SERENA_AWS_ENV`. The default is `personal-dev`.
 `SERENA_AWS_YES=1` applies without Terraform's `yes` prompt.
@@ -59,14 +59,26 @@ and alarms (pull request 18). The simulated CollectionSpace and the fake ETL, as
 `./serena aws` reads every setting below from SSM in the environment's account, one String parameter each under
 `/serena-<SERENA_ENV_NAME>/settings/`, except `AWS_PROFILE`, `AWS_REGION`, `SERENA_ENV_NAME` and
 `ADMIN_PROFILE` (the account administrator's profile), which say how to reach the
-account. The files then matter only to `./serena aws settings
-push`, which puts them there; a command whose files disagree with SSM says so and uses SSM's. Changing a setting is:
-edit the file, `settings push`, then deploy (or, with the pipeline, run it). Commands that save a setting
-(`rehearsal-vpc`, `allow-my-ip`) save it in SSM and in the `.local.conf`, so the files stay a whole copy and a later
-push doesn't undo it. The `settings`, `rehearsal-vpc` and `pipeline` commands run as
-`ADMIN_PROFILE` where the environment has one, since they come before the deployer role exists (or make it).
-`REAL_DATA_ACCOUNT` is in SSM only: `./serena aws pipeline` writes it, and `settings push` leaves
-it alone. The deploy pipeline's environments keep
+account. A command whose files disagree with SSM says so and uses SSM's.
+
+SSM is then the settings' one copy, and a computer's files only a copy that may be out of date: anyone with access may
+change a setting in SSM, Ops too, in the AWS console or with `aws ssm put-parameter`, and nobody has to tell anyone
+(decided November 20, 2026).
+
+- **A new environment:** `./serena aws settings push --env <env>` puts its settings there from the `.conf` and
+  `.local.conf`, once. Once SSM has them it refuses, so out-of-date files can't undo someone's change.
+- **Changing one:** `./serena aws settings set --env <env> ETL_CIDRS "<cidr>,<cidr>"` shows the old and new value,
+  asks, and writes that one setting to SSM and to the `.local.conf` here, nothing else. With no value it removes the
+  setting. It refuses `REAL_DATA_ACCOUNT`, `ACCOUNT_ID`, and a value the setting doesn't take (`true` or `false`, for
+  example). Then deploy (or, with the pipeline, run it).
+- **Bringing the files here up to date:** `./serena aws settings pull --env <env>` writes each setting that differs
+  from SSM into the `.local.conf` (one SSM no longer has, as empty), and lists them. It changes nothing in SSM.
+
+Commands that save a setting (`rehearsal-vpc`, `allow-my-ip`) save it in SSM and in the `.local.conf`. `settings push`,
+`set` and `delete`, `rehearsal-vpc` and `pipeline` run as `ADMIN_PROFILE` where the environment has one, since they
+come before the deployer role exists (or make it); `settings pull` and `show` only read, as the deployer.
+`REAL_DATA_ACCOUNT` is in SSM only: `./serena aws pipeline` writes it, and neither `settings push` nor `set` touches
+it. The deploy pipeline's environments keep
 their settings this way (it reads them in the build); personal-dev keeps its files (D277).
 
 **Settings** (in `<env>.conf`, or in the uncommitted `<env>.local.conf`, which wins; with `SETTINGS=ssm`, in SSM):
@@ -188,7 +200,7 @@ token source setting, decided in the CSpace ETL Process project.
 1. **The role first.** AWS refuses a policy naming a role that doesn't exist, so Ops makes the ETL server's role
    before Serena's deploy names it. Add a museum only once its ETL actually reads with the role: from then on,
    `etl-token` doesn't show its token.
-2. **The setting,** in the environment's settings (SSM, `./serena aws settings push`): `ETL_READER_ROLE_ARNS`, each
+2. **The setting,** in the environment's settings (SSM, `./serena aws settings set`): `ETL_READER_ROLE_ARNS`, each
    museum with its ETL server's role, like `CSPACE_TENANTS`:
    `ETL_READER_ROLE_ARNS="pahma=arn:aws:iam::<account>:role/<name> cinefiles=arn:aws:iam::<account>:role/<name>"`.
    One role may read several museums' tokens; each museum is named.
