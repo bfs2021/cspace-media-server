@@ -3046,3 +3046,66 @@ assume that checkout is `~/dev/src/rtl/cspace-media-server`.
   ```
 
   Expected: the environment's status, with no sign-in message.
+
+## 68. SSM is the settings' one copy: settings set and pull, on ucb-stage2 (15 minutes; from the pull request's branch)
+
+What it checks: Ops may now change a setting of a pipeline environment in SSM Parameter Store (in the AWS console)
+without telling anyone (decided November 20, 2026). `./serena aws settings push` no longer copies a whole
+`.local.conf` into SSM once SSM has the environment's settings, so an out-of-date copy can't undo their change.
+Instead, `./serena aws settings set` changes one setting, and `./serena aws settings pull` brings your `.local.conf` up
+to date with SSM. CI checks them against a stand-in SSM (`test_settings_set_changes_one_setting_and_leaves_the_others_alone`
+and the tests around it in `backend/tests/test_deploy.py`); this checks them against ucb-stage2's real SSM. Nothing here
+deploys anything: a setting changes the environment only at the next pipeline run, and step 5 puts back the one you
+change. (Section 67 is on the `env/ucb-prod` branch; whichever merges second renumbers if needed.)
+
+Run the commands from a checkout of the pull request's branch that has your `deploy/environments/ucb-stage2.local.conf`
+(it isn't committed). Every command runs as the stage 2 deployer profile, `serena-stage2-deploy`, which may read and
+write Serena's settings. Sign in first:
+
+```bash
+cd <your clone> && git switch deploy/settings-pull-set && git pull && aws sso login --sso-session berkeley
+```
+
+- [ ] **1. Show the settings.**
+
+  ```bash
+  cd <your clone> && ./serena aws settings show --env ucb-stage2
+  ```
+
+  Expected: `'ucb-stage2' in SSM, account …, /serena-stage2/settings/:` and one line per setting. Note `ENV_LABEL`'s
+  value: step 5 puts it back. If any line ends `(the files here: …)`, the last line says `To bring the files here up to
+  date: ./serena aws settings pull --env ucb-stage2`; run step 4 first, then come back.
+- [ ] **2. Change a setting as Ops would,** straight in SSM: in the AWS console (us-west-2, Systems Manager › Parameter
+  Store › `/serena-stage2/settings/ENV_LABEL` › Edit, adding ` (test)` at the end and saving), or:
+
+  ```bash
+  cd <your clone> && aws ssm put-parameter --name /serena-stage2/settings/ENV_LABEL --type String --overwrite --value "<the value from step 1> (test)" --profile serena-stage2-deploy --region us-west-2
+  ```
+
+  Expected: `{"Version": …, "Tier": "Standard"}`.
+- [ ] **3. A push from your files is refused.**
+
+  ```bash
+  cd <your clone> && ./serena aws settings push --env ucb-stage2
+  ```
+
+  Expected: `SSM already has the settings of 'ucb-stage2' …`, naming `./serena aws settings set --env ucb-stage2
+  SETTING VALUE` and `./serena aws settings pull --env ucb-stage2`. `settings show` still has the ` (test)` label.
+- [ ] **4. Pull brings your file up to date.** Run it twice:
+
+  ```bash
+  cd <your clone> && ./serena aws settings pull --env ucb-stage2 && ./serena aws settings pull --env ucb-stage2
+  ```
+
+  Expected: the first lists `  ENV_LABEL=<the value from step 1> (test)   (was <the value from step 1>)` and
+  `Updated 1 setting(s) in …/ucb-stage2.local.conf from SSM`; the second says `The files here already match SSM
+  (/serena-stage2/settings/).` Your `.local.conf` now has that `ENV_LABEL` line; its other lines are unchanged.
+- [ ] **5. Set puts it back, and changes only that setting.**
+
+  ```bash
+  cd <your clone> && ./serena aws settings set --env ucb-stage2 ENV_LABEL "<the value from step 1>"
+  ```
+
+  Expected: `  ~ ENV_LABEL=<the value from step 1> (was <the value from step 1> (test))` and `Write this to SSM? The
+  next deploy uses it. [y/N]`; answer `y`. Then `Done.` Run step 1 again: the same settings as at first, and no line
+  ends `(the files here: …)`.

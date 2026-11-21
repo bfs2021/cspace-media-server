@@ -67,7 +67,7 @@ read, apart from setting secrets and settings: never deploy from your computer t
     the ETL list script on the ETL server and applies its list on Manual refresh (Upload one). Or apply one of the ETL's
     recent lists (Choose from previous), if nothing has changed since. Or wait: the next day's refresh catches up.
   - Refused at the door (the ETL job's report shows a 403 "Not from this address"): the ETL server's address changed
-    or isn't in `ETL_CIDRS`. Correct `ETL_CIDRS` with `./serena aws settings push --env <env>`, then run the deploy
+    or isn't in `ETL_CIDRS`. Correct `ETL_CIDRS` with `./serena aws settings set --env <env> ETL_CIDRS "<cidr>,<cidr>"` (or in the AWS console, Systems Manager › Parameter Store), then run the deploy
     pipeline (Deploys, below).
   - The ETL couldn't read its token: see The ETL can't read its token, below.
 - **Escalate:** the ETL team, when the ETL job itself failed or can't reach Serena.
@@ -134,7 +134,7 @@ its own role), a failed read stops the ETL's call to Serena, and the deadline al
     the deploy pipeline: its plan should show the secret's and the key's policies changing, and applying it names
     the role as it is now.
 - **Do:**
-  - Correct `ETL_READER_ROLE_ARNS` with `settings push`, then run the deploy pipeline.
+  - Correct `ETL_READER_ROLE_ARNS` with `settings set`, then run the deploy pipeline.
   - Until the read works, the ETL can use a token file, the fallback: `./serena aws etl-token <museum> --env <env>
     --show` rotates the token and shows it; give it to the ETL team (CSW-1027), who switch the ETL's token source.
 - **A role that is to go:** remove its museum from `ETL_READER_ROLE_ARNS` and deploy before Ops deletes the role. AWS
@@ -204,8 +204,8 @@ at its own pace.
 
 An environment with a pipeline is deployed only by it (`deploy/README.md`, The deploy pipeline): Actions › Deploy ›
 Run workflow, from `main`. The plan job's summary says what to do next; its link opens the build's log in the AWS
-console, where the plan is. A settings change reaches the environment only through a deploy: `settings push`, then a
-pipeline run.
+console, where the plan is. A settings change reaches the environment only through a deploy: `settings set` (or a change in SSM in the AWS
+console), then a pipeline run. `settings pull` brings your `.local.conf` up to date afterwards.
 
 | The plan job says | Means | Do |
 | --- | --- | --- |
@@ -239,7 +239,7 @@ otherwise deploys. `./serena aws pause` and `resume` there are break-glass too, 
 2. **Sign in** with that permission set, as the environment's profile.
 3. **From a clean checkout of `main`** (or the commit the fix is on, once reviewed): `./serena aws plan --env <env>`,
    and read the plan. It reads the settings from SSM, as the pipeline does; a setting to change goes in with
-   `settings push` first.
+   `settings set` first.
 4. **`./serena aws deploy --env <env>`.** It asks you to type `break glass`, then, with real data, the account's
    number, to confirm the account is UC Berkeley's. CloudTrail records the session.
 5. **Afterwards:** the next pipeline run from `main` must show that the environment matches `main` (a plan with no

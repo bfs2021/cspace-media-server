@@ -412,3 +412,145 @@ def test_signing_in_needs_the_sso_token_terraform_reads(
         assert out.returncode == 1
         assert out.stderr.startswith("Not signed in to AWS for 'test'. Run: aws sso login --")
         assert "made-up" not in out.stdout + out.stderr
+
+
+# ---- settings set, pull and push (SSM is the settings' one copy, decided November 20, 2026) -------------------------
+# The settings functions of deploy/aws.sh, run against a stand-in SSM: one file per parameter under $SSM_DIR (its name
+# is the path), writes logged in $SSM_DIR.log.
+FAKE_SSM = r"""
+aws_() {
+  local a take=false
+  case "$*" in
+    "ssm describe-parameters"*) local path="$*"; path="${path##*Values=}"; path="${path%% *}"
+      ls "$SSM_DIR$path" 2>/dev/null | sed "s|^|$path/|" | paste -s -d '\t' - ;;
+    "ssm get-parameters"*)
+      for a in "$@"; do case "$a" in --names) take=true ;; --*) take=false ;;
+        *) [ "$take" = false ] || [ ! -f "$SSM_DIR$a" ] || printf '%s\t%s\n' "$a" "$(cat "$SSM_DIR$a")" ;; esac; done ;;
+    "ssm put-parameter"*) local name="$4" value="$8"; mkdir -p "$(dirname "$SSM_DIR$name")"
+      printf '%s' "$value" > "$SSM_DIR$name"; echo "put $name" >> "$SSM_DIR.log" ;;
+    "ssm delete-parameter"*) rm -f "$SSM_DIR$4"; echo "delete $4" >> "$SSM_DIR.log" ;;
+    "ssm add-tags-to-resource"*) ;;
+    *) echo "unexpected: aws $*" >&2; return 1 ;;
+  esac
+}
+die() { echo "$*" >&2; exit 1; }
+"""
+SETTINGS_FUNCTIONS = ("is_ssm_setting", "is_pipeline_setting", "settings_path", "ssm_settings", "setting_in",
+                      "put_setting", "save_local", "settings_in_files_only", "settings_set", "settings_pull",
+                      "settings_push", "settings_show")
+
+
+def run_settings(tmp_path: Path, body: str, answers: str = "y\n", files: dict[str, str] | None = None,
+                 ssm_values: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """body runs after the settings are loaded from the files (as load_env leaves them for ./serena aws settings)."""
+    aws_sh = (DEPLOY / "aws.sh").read_text()
+    lists = "".join(re.search(rf'^{v}="[^"]*"$', aws_sh, re.MULTILINE | re.DOTALL).group(0) + "\n"  # type: ignore[union-attr]
+                    for v in ("SSM_SETTINGS", "FILE_SETTINGS", "PIPELINE_SETTINGS"))
+    functions = "\n".join(shell_function(aws_sh, name) for name in SETTINGS_FUNCTIONS)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    conf, local = tmp_path / "t.conf", tmp_path / "t.local.conf"
+    conf.write_text("AWS_PROFILE=p\nAWS_REGION=us-west-2\nSERENA_ENV_NAME=t\nSETTINGS=ssm\nWEB_COUNT=2\n")
+    local.write_text("".join(f'{k}="{v}"\n' for k, v in (files or {}).items()))
+    ssm_dir = tmp_path / "ssm"
+    for key, value in (ssm_values or {}).items():
+        (ssm_dir / "serena-t" / "settings").mkdir(parents=True, exist_ok=True)
+        (ssm_dir / "serena-t" / "settings" / key).write_text(value)
+    script = (FAKE_SSM + lists + functions + f'\nCONF="{conf}"; LOCAL="{local}"; ENV=t; NAME=serena-t; CMD=settings\n'
+              f'SETTINGS=ssm; ACCOUNT_ID=""; . "$CONF"; . "$LOCAL"\n' + body + "\n")
+    env = {**os.environ, "SSM_DIR": str(ssm_dir)}
+    return subprocess.run(["bash", "-c", script], input=answers, env=env,  # noqa: S603, S607
+                          capture_output=True, text=True, check=False)
+
+
+def ssm_now(tmp_path: Path) -> dict[str, str]:
+    root = tmp_path / "ssm" / "serena-t" / "settings"
+    return {p.name: p.read_text() for p in root.iterdir()} if root.exists() else {}
+
+
+IN_SSM = {"ACCOUNT_ID": "111122223333", "ALLOWED_CIDRS": "203.0.113.7/32", "ENV_LABEL": "Set by Ops", "WEB_COUNT": "2"}
+HERE = {"ACCOUNT_ID": "111122223333", "ALLOWED_CIDRS": "203.0.113.7/32", "ENV_LABEL": "Old label"}
+
+
+def test_settings_push_is_only_for_a_new_environment(tmp_path: Path) -> None:
+    """Once SSM holds the settings, a push from files that may be out of date would undo someone's change."""
+    result = run_settings(tmp_path, "settings_push", files=HERE, ssm_values=IN_SSM)
+    assert result.returncode == 1
+    assert "SSM already has the settings of 't'" in result.stderr
+    assert "settings set --env t SETTING VALUE" in result.stderr and "settings pull --env t" in result.stderr
+    assert ssm_now(tmp_path) == IN_SSM
+    result = run_settings(tmp_path / "new", "settings_push", files=HERE, ssm_values={"REAL_DATA_ACCOUNT": "1"})
+    assert result.returncode == 0, result.stderr  # only the pipeline's setting there: still a new environment
+    assert ssm_now(tmp_path / "new")["ENV_LABEL"] == "Old label"
+
+
+def test_settings_set_changes_one_setting_and_leaves_the_others_alone(tmp_path: Path) -> None:
+    """Ops changed ENV_LABEL in SSM; a developer whose files still have the old one sets ALLOWED_CIDRS."""
+    result = run_settings(tmp_path, "settings_set ALLOWED_CIDRS 198.51.100.0/24", answers="n\n",
+                          files=HERE, ssm_values=IN_SSM)
+    assert result.returncode == 1 and ssm_now(tmp_path) == IN_SSM
+    assert "  ~ ALLOWED_CIDRS=198.51.100.0/24 (was 203.0.113.7/32)" in result.stdout
+    result = run_settings(tmp_path, "settings_set ALLOWED_CIDRS 198.51.100.0/24", files=HERE)
+    assert result.returncode == 0, result.stderr
+    assert ssm_now(tmp_path) == {**IN_SSM, "ALLOWED_CIDRS": "198.51.100.0/24"}
+    assert 'ALLOWED_CIDRS="198.51.100.0/24"' in (tmp_path / "t.local.conf").read_text()
+    assert (tmp_path / "ssm.log").read_text() == "put /serena-t/settings/ALLOWED_CIDRS\n"
+
+
+def test_settings_set_with_no_value_removes_the_setting(tmp_path: Path) -> None:
+    result = run_settings(tmp_path, 'settings_set ENV_LABEL ""', files=HERE, ssm_values=IN_SSM)
+    assert result.returncode == 0, result.stderr
+    assert "  - ENV_LABEL (was Set by Ops)" in result.stdout
+    assert "ENV_LABEL" not in ssm_now(tmp_path) and 'ENV_LABEL=""' in (tmp_path / "t.local.conf").read_text()
+
+
+@pytest.mark.parametrize(("args", "message"), [
+    ("REAL_DATA_ACCOUNT 111122223333", "set by ./serena aws pipeline"),
+    ("ACCOUNT_ID 999988887777", "ACCOUNT_ID is the account the settings are in"),
+    ("AWS_PROFILE x", "isn't a setting ./serena aws keeps in SSM"),
+    ("PROTECT_DATA yes", "PROTECT_DATA must be true or false"),
+    ("TERRAFORM_ROOT other", "TERRAFORM_ROOT must be personal or shared"),
+    ("WEB_COUNT two", "WEB_COUNT must be a number"),
+])
+def test_settings_set_refuses_what_it_cant_set(tmp_path: Path, args: str, message: str) -> None:
+    result = run_settings(tmp_path, f"settings_set {args}", files=HERE, ssm_values=IN_SSM)
+    assert result.returncode == 1 and message in result.stderr, result.stderr
+    assert ssm_now(tmp_path) == IN_SSM
+
+
+def test_settings_set_needs_settings_pushed_first(tmp_path: Path) -> None:
+    result = run_settings(tmp_path, "settings_set ALLOWED_CIDRS 198.51.100.0/24", files=HERE)
+    assert result.returncode == 1 and "settings push --env t" in result.stderr and ssm_now(tmp_path) == {}
+
+
+def test_settings_pull_brings_the_files_here_up_to_date(tmp_path: Path) -> None:
+    """Ops changed ENV_LABEL and removed ALLOWED_CIDRS: pull writes both into the .local.conf and changes nothing in
+    SSM. WEB_COUNT, set in the committed file, matches; a setting in neither SSM nor the files isn't written."""
+    in_ssm = {k: v for k, v in IN_SSM.items() if k != "ALLOWED_CIDRS"}
+    result = run_settings(tmp_path, "settings_pull", files=HERE, ssm_values=in_ssm)
+    assert result.returncode == 0, result.stderr
+    assert "  ENV_LABEL=Set by Ops   (was Old label)" in result.stdout and "Updated 2 setting(s)" in result.stdout
+    local = (tmp_path / "t.local.conf").read_text()
+    assert 'ENV_LABEL="Set by Ops"' in local and 'ALLOWED_CIDRS=""' in local and "WAF" not in local
+    assert ssm_now(tmp_path) == in_ssm and not (tmp_path / "ssm.log").exists()
+    files_now = {line.split("=", 1)[0]: line.split("=", 1)[1].strip('"') for line in local.splitlines() if "=" in line}
+    again = run_settings(tmp_path, "settings_pull", files=files_now)
+    assert "already match SSM" in again.stdout, again.stdout + again.stderr
+
+
+def test_settings_show_names_pull_where_the_files_differ(tmp_path: Path) -> None:
+    result = run_settings(tmp_path, "settings_show", files=HERE, ssm_values=IN_SSM)
+    assert result.returncode == 0, result.stderr
+    assert "  ENV_LABEL=Set by Ops   (the files here: Old label)" in result.stdout
+    assert "To bring the files here up to date: ./serena aws settings pull --env t" in result.stdout
+
+
+@pytest.mark.parametrize(("sub", "admin"), [("pull", False), ("show", False), ("set", True), ("push", True)])
+def test_settings_pull_and_show_run_as_the_deployer(sub: str, admin: bool) -> None:
+    """They only read, which the deployer may; push and set write, as ADMIN_PROFILE where the environment has one."""
+    load_env = shell_function((DEPLOY / "aws.sh").read_text(), "load_env")
+    choice = re.search(r'  case "\$CMD:\$\{SETTINGS_SUB:-\}" in.*?esac', load_env, re.DOTALL)
+    assert choice
+    script = (f"CMD=settings; SETTINGS_SUB={sub}; ADMIN_PROFILE=admin; AWS_PROFILE=deployer\n{choice.group(0)}\n"
+              'echo "$AWS_PROFILE"')
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True)  # noqa: S603, S607
+    assert result.stdout.strip() == ("admin" if admin else "deployer")
